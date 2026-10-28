@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using System.Linq;
@@ -225,7 +225,7 @@ namespace AceAutoManager {
             try {
                 File.WriteAllText(request,Program.Json.Serialize(MakeSettings()),new UTF8Encoding(true));
                 int code=await Task.Run(()=>{var info=new ProcessStartInfo(Application.ExecutablePath,"--admin "+mode+" "+Program.Quote(request)){UseShellExecute=true,Verb="runas",WindowStyle=ProcessWindowStyle.Hidden};using(var p=Process.Start(info)){p.WaitForExit();return p.ExitCode;}});
-                feedback.Text=code==0 ? (mode=="Install"?"已开启或升级自动管理，关闭窗口后仍会继续工作。":mode=="Clean"?"清理请求已提交；后台会先检查游戏，请稍后刷新状态。":"自动管理已停止。") : "操作未完成；请查看弹窗信息后重试。";
+                feedback.Text=code==0 ? (mode=="Install"?"已开启自动管理，关闭窗口后仍会继续工作。":mode=="Clean"?"清理请求已提交；后台会先检查游戏，请稍后刷新状态。":"自动管理已停止。") : "操作未完成；请查看弹窗信息后重试。";
                 if(code==0 && mode=="Remove") {busy=false;Close();return;}
             } catch(System.ComponentModel.Win32Exception e) {feedback.Text=e.NativeErrorCode==1223?"管理员授权已取消，设置未更改。":e.Message;}
             catch(Exception e) {feedback.Text="操作未完成："+e.Message;}
@@ -240,8 +240,8 @@ namespace AceAutoManager {
                 var d=Program.Json.Deserialize<Dictionary<string,object>>(output);
                 if(!(bool)d["ok"])throw new Exception(Convert.ToString(d["message"]));
                 bool installed=(bool)d["installed"],alive=(bool)d["monitorAlive"];
-                enable.Text=installed?"一键开启或升级":"一键开启自动管理";
-                manager.Text=alive?"自动管理：后台运行中":(installed?"自动管理：可一键开启或升级":"自动管理：尚未安装");manager.ForeColor=alive?Color.FromArgb(12,125,91):Color.FromArgb(76,88,106);
+                enable.Text="一键开启自动管理";
+                manager.Text=alive?"自动管理：后台运行中":(installed?"自动管理：已安装，可一键开启":"自动管理：尚未安装");manager.ForeColor=alive?Color.FromArgb(12,125,91):Color.FromArgb(76,88,106);
                 int count=Program.CountItems(d["drivers"])+Program.CountItems(d["services"])+Program.CountItems(d["processes"]);
                 ace.Text=count>0?"ACE：检测到 "+count+" 个运行中的组件":"ACE：未检测到运行中的组件";
                 var st=d["status"] as Dictionary<string,object>;

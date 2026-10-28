@@ -102,7 +102,7 @@ try {
         Assert-Protected $data
         $monitor = Join-Path $root 'Monitor-Ace.ps1'
         Assert-Protected $monitor
-        if (-not ([IO.File]::ReadAllText($monitor).Contains('cleanup-request.json'))) { throw '请先点击一键开启或升级，安装新版后台。' }
+        if (-not ([IO.File]::ReadAllText($monitor).Contains('cleanup-request.json'))) { throw '请先点击一键开启自动管理，安装当前版本的后台。' }
         $t = Read-OwnedTask
         if (-not $t -or $t.State -ne 'Running') { throw '请先开启自动管理，再立即清理。' }
         $requestFile = Join-Path $data 'cleanup-request.json'
