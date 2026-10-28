@@ -1,0 +1,7 @@
+/dist/
+/work/
+*.log
+*.user
+config.json
+status.json
+heartbeat.json

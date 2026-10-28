@@ -1,0 +1,29 @@
+name: Windows build and tests
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build executable
+        shell: powershell
+        run: ./build.ps1
+      - name: Test session logic
+        shell: powershell
+        run: ./tests/Test-State.ps1
+      - name: Test isolated shutdown scenarios
+        shell: powershell
+        run: ./tests/Test-Cleanup.ps1
+      - name: Validate configuration rules
+        shell: powershell
+        run: ./tests/Test-Backend.ps1
+      - name: Verify automatic discovery
+        shell: powershell
+        run: ./tests/Test-Discovery.ps1
+      - name: Verify game directory guards
+        shell: powershell
+        run: ./tests/Test-DirectoryGuard.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ACE-Auto-Manager-windows-x64
+          path: dist/*
