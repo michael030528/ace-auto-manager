@@ -14,8 +14,8 @@ using System.Web.Script.Serialization;
 using Microsoft.Win32;
 
 [assembly: AssemblyTitle("ACE 自动管理")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 namespace AceAutoManager {
     public class Settings {
@@ -123,7 +123,9 @@ namespace AceAutoManager {
         Settings settings = new Settings();
 
         public MainForm(bool test) {
-            Text="ACE 自动管理 · v1.0.0"; ClientSize=new Size(900,690); MinimumSize=new Size(916,729); MaximumSize=new Size(916,729);
+            Text="ACE 自动管理 · v1.0.1"; ClientSize=new Size(900,690); MinimumSize=new Size(916,729); MaximumSize=new Size(916,729);
+            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("app.ico"))
+            using (var icon = new Icon(stream)) { Icon = (Icon)icon.Clone(); }
             AutoScaleMode=AutoScaleMode.None; Font=new Font("Microsoft YaHei UI",10F); BackColor=Color.FromArgb(245,247,251); StartPosition=FormStartPosition.CenterScreen;
             var title = LabelAt("让 ACE 随游戏工作",30,23,800,40,23,true); title.ForeColor=Color.FromArgb(22,34,55);
             LabelAt("玩游戏时照常开启 · 不玩时自动清理 · 关闭窗口也能继续管理",33,70,835,27,10,false);
