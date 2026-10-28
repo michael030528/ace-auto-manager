@@ -11,6 +11,12 @@ jobs:
       - name: Test session logic
         shell: powershell
         run: ./tests/Test-State.ps1
+      - name: Test retry and manual cleanup guards
+        shell: powershell
+        run: ./tests/Test-Retry.ps1
+      - name: Test exact executable removal
+        shell: powershell
+        run: ./tests/Test-Uninstall.ps1
       - name: Test isolated shutdown scenarios
         shell: powershell
         run: ./tests/Test-Cleanup.ps1

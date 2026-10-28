@@ -161,7 +161,8 @@ function Save-AceStatus([string]$State, [string]$Detail) {
 
 $caseResults = foreach ($caseName in @('Normal', 'CannotStop', 'StopThrows', 'GameAppearsBeforeStop', 'PendingBootNeedsTray')) {
     New-TestFixture $caseName
-    try { Close-AceAfterGame } catch { $script:fixture.EscapedError = $_.Exception.Message }
+    $cleanupResult = $null
+    try { $cleanupResult = Close-AceAfterGame } catch { $script:fixture.EscapedError = $_.Exception.Message }
     $assertionError = ''
     try {
         Assert-Test ($script:fixture.ConstructorCalls -eq 1) 'Exactly one mocked controller must be constructed.'
@@ -173,12 +174,14 @@ $caseResults = foreach ($caseName in @('Normal', 'CannotStop', 'StopThrows', 'Ga
                 Assert-Test ($script:fixture.WaitCalls -eq 1) 'Normal target must call WaitForStatus.'
                 Assert-Test ($script:fixture.KillCalls -eq 1) 'Tray must close after all targets stop.'
                 Assert-Test ($script:fixture.LastState -eq 'Closed') 'Successful cleanup must report Closed.'
+                Assert-Test ($cleanupResult -eq $true) 'Success must cancel retry scheduling.'
             }
             'CannotStop' {
                 Assert-Test ($script:fixture.EscapedError -eq '') ('Unexpected error: ' + $script:fixture.EscapedError)
                 Assert-Test ($script:fixture.StopCalls -eq 0 -and $script:fixture.WaitCalls -eq 0) 'CannotStop target must receive no stop or wait.'
                 Assert-Test ($script:fixture.KillCalls -eq 0) 'Tray must remain while target is running.'
                 Assert-Test ($script:fixture.LastState -eq 'Partial') 'CannotStop must report Partial.'
+                Assert-Test ($cleanupResult -eq $false) 'Partial cleanup must allow bounded retries.'
             }
             'StopThrows' {
                 Assert-Test ($script:fixture.EscapedError -eq '') ('Stop exception should be handled: ' + $script:fixture.EscapedError)

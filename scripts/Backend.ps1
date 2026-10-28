@@ -1,4 +1,4 @@
-﻿param([ValidateSet('Discover','Status','Install','Pause','Remove','Validate')][string]$Mode = 'Status', [string]$RequestPath)
+﻿param([ValidateSet('Discover','Status','Install','Pause','Remove','Validate','Clean')][string]$Mode = 'Status', [string]$RequestPath)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $root = Join-Path $env:ProgramFiles 'AceGameAutoClose'
@@ -97,7 +97,23 @@ try {
     }
     $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw '此操作需要 Windows 管理员授权。' }
+    if ($Mode -eq 'Clean') {
+        Assert-Protected $root
+        Assert-Protected $data
+        $monitor = Join-Path $root 'Monitor-Ace.ps1'
+        Assert-Protected $monitor
+        if (-not ([IO.File]::ReadAllText($monitor).Contains('cleanup-request.json'))) { throw '请先点击一键开启或升级，安装新版后台。' }
+        $t = Read-OwnedTask
+        if (-not $t -or $t.State -ne 'Running') { throw '请先开启自动管理，再立即清理。' }
+        $requestFile = Join-Path $data 'cleanup-request.json'
+        if (Test-Path -LiteralPath $requestFile) { Assert-Protected $requestFile }
+        @{createdAt=(Get-Date).ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath ($requestFile+'.tmp') -Encoding UTF8
+        Move-Item -LiteralPath ($requestFile+'.tmp') -Destination $requestFile -Force
+        @{ok=$true;message='清理请求已提交，后台会先检查游戏，再执行清理。'} | ConvertTo-Json -Compress
+        exit 0
+    }
     if ($Mode -eq 'Pause' -or $Mode -eq 'Remove') {
+        Protect-Directory $data
         $t = Stop-OwnedTask
         if ($t) {
             if ($Mode -eq 'Remove') { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false }
@@ -105,6 +121,8 @@ try {
         }
         if (Test-Path -LiteralPath $data) {
             Assert-Protected $data
+            $pending = Join-Path $data 'cleanup-request.json'
+            if (Test-Path -LiteralPath $pending) { Assert-Protected $pending; Remove-Item -LiteralPath $pending -Force }
             @{state=$(if($Mode -eq 'Pause'){'Paused'}else{'Removed'});updatedAt=(Get-Date).ToString('o');detail='Automatic management stopped; ACE itself and its boot settings were not changed.';monitorPid=0} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $data 'status.json') -Encoding UTF8
         }
         @{ok=$true;message='自动管理已停止。ACE 本体未卸载，安装文件和日志保留。'} | ConvertTo-Json -Compress
@@ -132,6 +150,8 @@ try {
     $wasRunning = $oldTask -and $oldTask.State -eq 'Running'
     $null = Stop-OwnedTask
     try {
+        $pending = Join-Path $data 'cleanup-request.json'
+        if (Test-Path -LiteralPath $pending) { Assert-Protected $pending; Remove-Item -LiteralPath $pending -Force }
         Copy-Item -LiteralPath $sourceMonitor -Destination (Join-Path $root 'Monitor-Ace.ps1') -Force
         $c | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $root 'config.json') -Encoding UTF8
         $action = New-ScheduledTaskAction -Execute $psExe -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $root 'Monitor-Ace.ps1')) -WorkingDirectory $root

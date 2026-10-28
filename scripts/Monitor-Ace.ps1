@@ -22,6 +22,21 @@ function Get-NextSessionState {
     return @{ State = 'Waiting'; QuietSince = $QuietSince; Close = (($Now - $QuietSince) -ge $GraceSeconds) }
 }
 
+function Get-CleanupRetryPlan([bool]$Succeeded, [int]$Attempts, [double]$Now, [int]$GraceSeconds) {
+    if ($Succeeded) { return @{State='Idle'; Due=0; Attempts=0} }
+    if ($Attempts -ge 4) { return @{State='Idle'; Due=0; Attempts=$Attempts} }
+    return @{State='Retrying'; Due=($Now + [Math]::Max(60,$GraceSeconds)); Attempts=$Attempts}
+}
+function Get-CleanupStep([string]$State, [int]$Sessions, [int]$Blockers, [double]$Now,
+    [double]$QuietSince, [int]$GraceSeconds, [bool]$Manual, [double]$RetryDue) {
+    if ($State -eq 'Retrying') {
+        if ($Blockers -gt 0) { return @{State='Active';QuietSince=0;Close=$false} }
+        if (-not $Manual -and $Now -lt $RetryDue) { return @{State='Retrying';QuietSince=0;Close=$false} }
+        return @{State='Waiting';QuietSince=0;Close=$true}
+    }
+    if ($Manual -and $Blockers -eq 0) { return @{State='Waiting';QuietSince=0;Close=$true} }
+    return Get-NextSessionState $State $Sessions $Blockers $Now $QuietSince $GraceSeconds
+}
 if ($LibraryOnly) { return }
 $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config.json') -Encoding UTF8 | ConvertFrom-Json
 # 缺少字段的旧配置也启用登录清理；显式 false 可保留开机预启动模式。
@@ -144,10 +159,12 @@ function Close-AceAfterGame {
     if ($remainingTargets.Count -eq 0 -and $remainingProcesses.Count -eq 0) {
         Write-AceLog 'CLOSED: all discovered ACE services, drivers and processes are stopped. A reboot may be needed for the next game.'
         Save-AceStatus 'Closed' 'All discovered ACE components stopped. The next game may require a reboot.'
+        return $true
     } else {
         $detail = 'Remaining services/drivers: {0}; processes: {1}' -f ($remainingTargets.Name -join ', '), ($remainingProcesses.Name -join ', ')
         Write-AceLog ('PARTIAL: ' + $detail)
         Save-AceStatus 'Partial' $detail
+        return $false
     }
 }
 
@@ -211,6 +228,9 @@ try {
     $quietSince = 0
     $timer = [Diagnostics.Stopwatch]::StartNew()
     $lastHeartbeat = -30
+    $attempts = 0
+    $retryDue = 0
+    $manualPath = Join-Path $dataRoot 'cleanup-request.json'
     while ($true) {
         if ($timer.Elapsed.TotalSeconds - $lastHeartbeat -ge 30) {
             @{time=(Get-Date).ToString('o');pid=$PID} | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $dataRoot 'heartbeat.json') -Encoding UTF8
@@ -218,7 +238,20 @@ try {
         }
         try {
             $activity = Get-GameActivity
-            $next = Get-NextSessionState -State $state -SessionCount $activity.Sessions -BlockerCount $activity.Blockers -Now $timer.Elapsed.TotalSeconds -QuietSince $quietSince -GraceSeconds $config.graceSeconds
+            $manual = $false
+            if (Test-Path -LiteralPath $manualPath) {
+                $request = Get-Content -LiteralPath $manualPath -Encoding UTF8 | ConvertFrom-Json
+                Remove-Item -LiteralPath $manualPath -Force
+                $age = ([DateTimeOffset]::Now - [DateTimeOffset]::Parse($request.createdAt)).TotalSeconds
+                $manual = $age -ge 0 -and $age -lt 60
+                if ($manual -and $activity.Blockers -gt 0) {
+                    Save-AceStatus 'Blocked' ('Cleanup cancelled: '+($activity.Names -join ', '))
+                    $manual = $false
+                }
+            }
+            if ($manual) { $attempts=0 }
+            $next = Get-CleanupStep $state $activity.Sessions $activity.Blockers $timer.Elapsed.TotalSeconds $quietSince $config.graceSeconds $manual $retryDue
+            if ($next.State -eq 'Active') { $attempts=0 }
             if ($next.State -ne $state) {
                 Write-AceLog ('STATE: {0} -> {1}; game processes: {2}' -f $state, $next.State, ($activity.Names -join ', '))
                 Save-AceStatus $next.State ($activity.Names -join ', ')
@@ -229,13 +262,24 @@ try {
                 # 登录后的初次清理和每次游戏会话各执行一次，不反复停止。
                 $state = 'Idle'
                 $quietSince = 0
-                Close-AceAfterGame
+                $attempts++
+                Save-AceStatus 'Cleaning' ('Cleanup attempt {0}/4; checking games before each stop.' -f $attempts)
+                $success = Close-AceAfterGame
+                $plan = Get-CleanupRetryPlan ([bool]$success) $attempts $timer.Elapsed.TotalSeconds $config.graceSeconds
+                $state=$plan.State; $retryDue=$plan.Due; $attempts=$plan.Attempts
+                if ($state -eq 'Retrying') { Save-AceStatus 'Retrying' ('Cleanup incomplete. Retry {0}/3 after {1} seconds; games cancel retry.' -f $attempts,[Math]::Max(60,$config.graceSeconds)) }
+                elseif (-not $success) { Save-AceStatus 'RetryExhausted' 'Initial cleanup and 3 retries did not complete. Inspect remaining components and logs; no further retry until a new game session or manual request.' }
             }
         } catch {
             Write-AceLog ('CHECK/CLEANUP CANCELLED: ' + $_.Exception.Message)
             # 检测失败后重新累计安静时间，不能把不可见进程误判为游戏退出。
             if ($state -eq 'Waiting') { $state = 'Active'; $quietSince = 0 }
             Save-AceStatus 'Attention' $_.Exception.Message
+            if ($attempts -gt 0) {
+                $plan = Get-CleanupRetryPlan $false $attempts $timer.Elapsed.TotalSeconds $config.graceSeconds
+                $state=$plan.State; $retryDue=$plan.Due
+                if ($attempts -ge 4) { Save-AceStatus 'RetryExhausted' ('Retry limit reached: '+$_.Exception.Message) }
+            }
         }
         Start-Sleep -Seconds $config.pollSeconds
     }

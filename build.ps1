@@ -9,6 +9,7 @@ Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'scripts') -Filter '*.ps1' |
 }
 $compilerArguments = @('/nologo','/target:winexe','/platform:x64','/optimize+',('/out:'+(Join-Path $dist 'ACE-Auto-Manager.exe')),('/win32manifest:'+(Join-Path $PSScriptRoot 'src\app.manifest')),
     ('/win32icon:'+(Join-Path $PSScriptRoot 'assets\app.ico')),('/resource:'+(Join-Path $PSScriptRoot 'assets\app.ico')+',app.ico'),
+    ('/resource:'+(Join-Path $PSScriptRoot 'scripts\Remove-Launcher.ps1')+',Remove-Launcher.ps1'),
     '/reference:System.dll','/reference:System.Core.dll','/reference:System.Drawing.dll','/reference:System.Windows.Forms.dll','/reference:System.Web.Extensions.dll',
     ('/resource:'+(Join-Path $PSScriptRoot 'scripts\Backend.ps1')+',Backend.ps1'),('/resource:'+(Join-Path $PSScriptRoot 'scripts\Monitor-Ace.ps1')+',Monitor-Ace.ps1'),('/resource:'+(Join-Path $PSScriptRoot 'scripts\Discover-AceGames.ps1')+',Discover-AceGames.ps1'),(Join-Path $PSScriptRoot 'src\Program.cs'))
 & $compiler @compilerArguments
